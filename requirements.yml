@@ -1,0 +1,5 @@
+#https://docs.ansible.com/ansible/latest/galaxy/user_guide.html#installing-roles
+
+- name: geerlingguy.nodejs
+- name: geerlingguy.nginx
+- name: geerlingguy.git

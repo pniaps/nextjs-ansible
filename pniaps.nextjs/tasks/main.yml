@@ -1,0 +1,105 @@
+---
+
+- name: Install acl to act as non root user
+  apt:
+    name:
+      - acl
+
+- name: Create group '{{ nextjs_group }}'
+  ansible.builtin.group:
+    name: "{{ nextjs_group }}"
+    state: present
+
+- name: Create user '{{ nextjs_user }}' with group '{{ nextjs_group }}'
+  ansible.builtin.user:
+    name: "{{ nextjs_user }}"
+    group: "{{ nextjs_group }}"
+    shell: /bin/bash
+
+- name: "create project folder '{{ nextjs_path }}'"
+  file:
+    path: "{{ nextjs_path }}"
+    state: directory
+    owner: "{{ nextjs_user }}"
+    group: "{{ nextjs_group }}"
+    mode: 0770
+
+- name: Define nginx template
+  set_fact:
+    nextjs_nginx_template: "{{ role_path }}/templates/nginx.vhost.j2"
+
+- import_role:
+    name: geerlingguy.nginx
+  vars:
+    nginx_remove_default_vhost: true
+    nginx_vhosts:
+      - template: "{{ nextjs_nginx_template }}"
+        server_name: "{{ nextjs_domain }}"
+
+- name: "Add '{{ nginx_user }}' to group '{{ nextjs_group }}'"
+  user:
+    name: '{{ nginx_user }}'
+    groups: '{{ nextjs_group }}'
+    append: yes
+  notify: restart nginx
+
+- name: Define nodejs_version
+  set_fact:
+    nodejs_version: "{{ nextjs_nodejs_version }}"
+
+- import_role:
+    name: geerlingguy.nodejs
+  vars:
+    nodejs_npm_global_packages:
+      - pm2
+
+- import_role:
+    name: geerlingguy.git
+
+- name: "Update repository"
+  ansible.builtin.git:
+    repo: "{{ nextjs_repo }}"
+    dest: "{{ nextjs_path }}"
+    force: yes
+  become: true
+  become_user: "{{ nextjs_user }}"
+  register: git_result
+  changed_when: "git_result.after != git_result.before"
+
+- name: "Stop app if running"
+  command: "/usr/local/lib/npm/bin/pm2 stop {{ nextjs_domain }}"
+  become: true
+  become_user: "{{ nextjs_user }}"
+  args:
+    chdir: "{{ nextjs_path }}/"
+  failed_when: false
+
+- name: "Delete app if running"
+  command: "/usr/local/lib/npm/bin/pm2 delete {{ nextjs_domain }}"
+  become: true
+  become_user: "{{ nextjs_user }}"
+  args:
+    chdir: "{{ nextjs_path }}/"
+  failed_when: false
+
+- name: "Install dependencies"
+  command: "npm install"
+  become: true
+  become_user: "{{ nextjs_user }}"
+  args:
+    chdir: "{{ nextjs_path }}/"
+
+- name: "Build app"
+  command: "npx next build"
+  become: true
+  become_user: "{{ nextjs_user }}"
+  args:
+    chdir: "{{ nextjs_path }}/"
+
+- name: "Start app"
+  command: "/usr/local/lib/npm/bin/pm2 start --name={{nextjs_domain}} npx -- next start --port {{nextjs_port}}"
+  become: true
+  become_user: "{{ nextjs_user }}"
+  args:
+    chdir: "{{ nextjs_path }}/"
+

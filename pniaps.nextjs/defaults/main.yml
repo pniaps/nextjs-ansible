@@ -1,0 +1,8 @@
+---
+nextjs_nodejs_version: "20.x"
+nextjs_domain: "{{ inventory_hostname }}"
+nextjs_path: /opt/{{ nextjs_domain }}
+nextjs_user: "nextjs"
+nextjs_group: "nextjs"
+nextjs_port: 3000
+# nextjs_repo:
